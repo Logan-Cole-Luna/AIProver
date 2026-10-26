@@ -12,15 +12,14 @@ a fine-tuned Leanstral-class model driven by an evolved agentic harness (Lean v4
 cslib, and the lean-lsp tools). The orchestration builds on it: Claude roles formalize a problem,
 audit the formalization, decompose the proof into lemmas, and assign each lemma to AIProver jobs.
 
-This repository is the single entry point to that software. It pins each component as a
-submodule at a tested commit and sets the components up with Nix. Development takes place inside
-each component's own repository, and this repository records which commits work together.
+This repository is the single entry point to that software: it contains each component as a
+submodule at a tested commit and sets the components up with Nix.
 
-| Component | Path | Repository | Documentation |
-| --- | --- | --- | --- |
-| Harness | `harness/` | [PrithwishJana/AIProver](https://github.com/PrithwishJana/AIProver) | [HARNESS.md](HARNESS.md) |
-| Orchestration | `orchestration/` | [Logan-Cole-Luna/aiprover-orchestration](https://github.com/Logan-Cole-Luna/aiprover-orchestration) | [ORCHESTRATION.md](ORCHESTRATION.md) |
-| Claude Code plugins | `skill/` | this repository | [skill/README.md](skill/README.md) |
+| Component | Path | Documentation |
+| --- | --- | --- |
+| Harness | `harness/` | [HARNESS.md](HARNESS.md) |
+| Orchestration | `orchestration/` | [ORCHESTRATION.md](ORCHESTRATION.md) |
+| Claude Code plugins | `skill/` | [skill/README.md](skill/README.md) |
 
 ```mermaid
 flowchart LR
@@ -47,8 +46,8 @@ nix run .#setup               -- --endpoint http://<host>:<port>   # both
 
 On a machine without Nix, `scripts/setup.sh harness|orchestration|all` runs the same steps and
 first installs Nix after confirmation (sudo once, to create `/nix`). The setup initializes the
-submodules that it needs, so a plain clone suffices.
-`--dry-run` prints every step without changing anything, and `--help` lists the options.
+submodules that it needs, so a plain clone suffices. `--dry-run` prints every step without
+changing anything, and `--help` lists the options.
 
 | Model server | Options | Connection |
 | --- | --- | --- |
@@ -59,40 +58,10 @@ submodules that it needs, so a plain clone suffices.
 
 `nix develop` (or `direnv allow`, once) opens a shell with the tools of both components, the
 `aiprover` CLI on `PATH`, and `AIPROVER_CONFIG` set to the harness configuration of the setup.
-
-## How the orchestration reaches the harness
-
-The orchestration also carries the harness as its own `AIProver/` submodule, so that it remains
-usable on its own. Within this repository, the setup runs `orchestration/setup --harness harness/`.
-The orchestration then resolves every harness path through the link `orchestration/aiprover/harness`,
-which points at this repository's `harness/`, and leaves its own submodule uninitialized.
-Consequently, one harness checkout serves both components. The two components also share one
-Lean project and the same Nix virtualenvs, so Mathlib is built once and the environments are
-built once.
-
-## Versions
-
-| Component | Commit | Date |
-| --- | --- | --- |
-| harness | `73dc451` | 2026-10-21 |
-| orchestration | `<first pin>` | |
-
-`scripts/check-pins.sh` prints this table from the submodule pointers. It fails when the
-orchestration's own `AIProver/` pointer differs from `harness/`, since both must name the same
-harness commit.
-
-**Releasing a new combination.** Commit and push in the component repository first; when the
-harness changes, also bump `AIProver/` in the orchestration. Then, in this repository:
-
-```bash
-git -C harness checkout <commit>          # and likewise for orchestration
-scripts/check-pins.sh                     # the matrix; must succeed
-git add harness orchestration README.md
-git commit -m "Bump harness <commit>, orchestration <commit>"
-```
-
-**Adding a component** (for example, SAM) takes one submodule, one function and one case in
-`scripts/setup.sh`, one app in `flake.nix`, and one row in each table above.
+Then, in Claude Code, `<informal_theorem>` and `<informal_proof>` blocks start the
+`aiprover-autoformalize` skill, and "Use the aiprover-captain skill to formalize and prove …"
+starts an orchestration run. [HARNESS.md](HARNESS.md) and [ORCHESTRATION.md](ORCHESTRATION.md)
+describe each component, its setup, and its use in full.
 
 ## Layout
 
@@ -102,7 +71,7 @@ git commit -m "Bump harness <commit>, orchestration <commit>"
 ├── nix/harness-tools.nix    # programs of the harness and its setup
 ├── scripts/
 │   ├── setup.sh             # the setup commands
-│   └── check-pins.sh        # version matrix and consistency check
+│   └── check-pins.sh        # submodule commits and their consistency
 ├── skill/                   # Claude Code marketplace "aiprover" of both plugins
 ├── harness/                 # submodule: AIProver harness, CLI, and skill
 ├── orchestration/           # submodule: aiprover-orchestration
