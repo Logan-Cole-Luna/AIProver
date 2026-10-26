@@ -1,0 +1,8 @@
+[submodule "harness"]
+	path = harness
+	url = https://github.com/PrithwishJana/AIProver
+	branch = orchestration-skill-hosting
+[submodule "orchestration"]
+	path = orchestration
+	url = https://github.com/Logan-Cole-Luna/aiprover-orchestration
+	branch = main

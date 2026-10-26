@@ -1,0 +1,8 @@
+# Written by the setup for each device: Nix out-links, the harness configuration, the Lean
+# project, and AIProver jobs.
+.aiprover/
+
+# Nix
+result
+result-*
+.direnv/

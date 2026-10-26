@@ -1,0 +1,19 @@
+{
+  "name": "aiprover",
+  "description": "The AIProver Claude Code plugins: proof auto-formalization with the AIProver harness, and its orchestration.",
+  "owner": {
+    "name": "AIProver"
+  },
+  "plugins": [
+    {
+      "name": "aiprover",
+      "source": "./plugins/aiprover",
+      "description": "Proof auto-formalization into Lean 4 with the AIProver agent (skill aiprover-autoformalize), plus the lean-lsp MCP tools."
+    },
+    {
+      "name": "aiprover-orchestration",
+      "source": "./plugins/aiprover-orchestration",
+      "description": "Formalization and proof of a theorem by an orchestration of Claude roles and AIProver jobs (skill aiprover-captain)."
+    }
+  ]
+}
