@@ -34,19 +34,19 @@ runs each as an orchestrator process; Claude runs on a Claude subscription
 and AIProver on a model server. Linux, WSL2 or macOS, about 15 GB of disk.
 
 **Setup (Nix, once per machine).** From the repository root,
-`nix run .#setup-orchestration` runs `orchestration/setup` with this
+`./setup orchestration` installs Nix if needed (after confirmation; sudo
+once, to create `/nix`) and runs `orchestration/setup` with this
 repository's harness: it builds the tools and AIProver virtualenvs into
 `aiprover/nix/`, builds the Lean project, connects the model server, and
 installs the plugin from the marketplace `skill/` (`--dry-run` prints the
-steps). `nix run .#setup` sets up the harness first, and the orchestration
-then shares its Lean project. On a machine without Nix,
-`scripts/setup.sh orchestration` installs it first (after confirmation; sudo
-once, to create `/nix`):
+steps). `./setup` sets up the harness first, and the orchestration then
+shares its Lean project. With Nix, `nix run .#setup-orchestration` is the
+same command:
 
 ```bash
 git clone https://github.com/Logan-Cole-Luna/AIProver && cd AIProver
-nix run .#setup-orchestration -- --endpoint http://<host>:<port>   # none: Claude only
-cd orchestration && nix develop                                     # a shell with the tools on PATH
+./setup orchestration --endpoint http://<host>:<port>   # none: Claude only
+cd orchestration && nix develop                         # a shell with the tools on PATH
 ```
 
 **Harness.** The orchestration carries the harness as its own `AIProver/`
@@ -114,8 +114,8 @@ proved by AIProver jobs on a model server, or by Claude subagents without
 one. The same setup also installs the plugin, from the repository root:
 
 ```bash
-nix run .#setup-orchestration -- --endpoint none                   # Claude only
-nix run .#setup-orchestration -- --endpoint http://<host>:<port>   # AIProver model server
+./setup orchestration --endpoint none                   # Claude only
+./setup orchestration --endpoint http://<host>:<port>   # AIProver model server
 ```
 
 | Model server | Option |
@@ -142,25 +142,63 @@ written to `results/<slug>_skill_<date>/`.
 
 ## 3. Using a running server
 
-A query server already running on a host (section 1) can be used without
-any setup. With an account on that host, forward its port:
+A query server on a host (section 1) can be used without any setup. Its
+runs use the submitting user's own Claude subscription; therefore each user
+runs a server of their own on the host, under their own account. With an
+account on the host, one command from the user's own machine signs in to
+Claude on first use, starts the server, and forwards its page:
 
 ```bash
-ssh -N -L 8443:localhost:8443 <user>@<server-host>
+ssh -t -L PORT:127.0.0.1:PORT <user>@<host> \
+    /home/loganluna/workspace/aiprover_orchestration/scripts/user/aiprover-server serve
 ```
 
-Then open http://localhost:8443 (it leads to `/user`); `ssh` holds the
-connection until Ctrl+C. When 8443 is in use locally, forward another port
-(`-L 8450:localhost:8443`, then http://localhost:8450). The page submits an
-informal statement and proof, or a problem of the open and OpenAI math
-datasets, and lists the proved OpenAI problems and the runs submitted from
-it with their Lean files, reports and traces. A cancelled or unproved run
-has a Resume button that continues it from its trace.
+`PORT` is fixed per account (20000 + 2 × (uid mod 5000)); on the host,
+`aiprover-server ssh` prints the complete command. On first use the command
+runs `claude auth login`, which prints Anthropic's sign-in link; the sign-in
+completes in the browser on Anthropic's site, and the login is kept in the
+user's `~/.claude` on the host. No Claude credential passes through the
+page or the server. Then open `http://localhost:PORT/user`; Ctrl+C closes the
+connection, while the server and its runs continue (`aiprover-server stop`
+ends the server). Pro and Max limits assume individual use, which long runs
+exhaust quickly.
 
-Runs with Claude roles use the submitting user's own Claude login: each
-user starts a server under their own account with
-`scripts/user/aiprover-server`, which signs in once and prints the tunnel
-command (`docs/server.md`, "Per-user server").
+Concurrency is bounded per machine, across runs and users: hosted model calls,
+Lean processes, and AIProver sessions wait for slots whose number follows from
+the machine's memory and processors. `AIPROVER_MAX_HOSTED`, `AIPROVER_MAX_TOOL_CALLS`, `AIPROVER_MAX_LEAN`,
+`AIPROVER_MAX_SESSIONS`, and `AIPROVER_LEAN_MB` (for checks; builds use 8192 MB)
+replace the derived limits.
+
+The page submits an informal statement and proof, or a problem of the open
+and OpenAI math datasets, and lists the proved OpenAI problems and the runs
+submitted from it with their Lean files, reports, and traces. Its Guide explains
+the page to readers new to Lean, and its theme also applies to the trace pages. The form offers each Lean version; one that is not
+
+The Projects tab holds the results of one subject as a chain on a shared
+library. The Submit page offers one result or a project, which starts from a
+goal and optional source files. **Plan
+milestones** proposes the chain, which stays editable until it starts, and each
+result opens in place with its run. **Blueprint** shows the results as a graph,
+each with the blueprint of its lemmas, and the card links the shared library
+and source files. **Research** has one Claude session answer
+a question and a second referee the answer; the report adds open lemmas and
+claims without a Lean proof, and the Resume dialog replans a run on it. A claim
+may be confirmed or rejected by a person, checked by Claude, or added as a result
+to prove in Lean. Review is optional, and only the last settles a claim.
+installed can be downloaded there with its matching Mathlib, REPL, and CSLib
+(`aiprover_orchestration/lean/releases.py`). A cancelled or
+unproved run has a Resume button that continues it from its trace, and asks
+for a higher limit if the run reached its Claude limit (50 USD by default). A
+proved run without documents has a Generate documents button. With the setting
+"Require review of the proof plan before proving", a run stops after its sketch
+and presents the plan as a blueprint, in natural language and in Lean, with a
+dependency graph; the page signals the review, and the reviewer approves,
+approves with comments, requests a revision, or rejects the plan. Finished runs
+also produce the blueprint in leanblueprint format. Import
+run adds a run started elsewhere from a zip of its `results/<run_id>/` folder
+or of its export. A run takes an optional name, which becomes its id. The
+form's "Orchestrator settings" set a run's hand-backs, retries, attempts, and
+Claude budget, among others.
 
 ## 4. Layout
 
@@ -230,18 +268,20 @@ for size. Slides on these results:
 
 ## 7. Configuration
 
-Each role of a run config names a backend: `claude`, `openai_compatible` (a
-local server or a hosted provider: `openai`, `huggingface`, `openrouter`),
-or `aiprover` (solver only). `claude` uses the subscription of the
+Each role of a run config names a backend: `claude`, `codex`,
+`openai_compatible` (any server with that API), or `aiprover` (solver only).
+Claude and Codex install on first use, when a user signs in or runs a model. `claude` uses the subscription of the
 logged-in `claude` CLI, or the Anthropic API when `ANTHROPIC_API_KEY` is
 set (`CLAUDE_AUTH=subscription|api` overrides).
 
 A GPU group names the model server that runs a run's AIProver jobs. Group
-`cpu` needs none (every role on Claude or a hosted model). The other groups
+`cpu` needs none (every role on Claude, Codex, or a server added on the page). The other groups
 use the endpoint written by the setup's `--endpoint <URL>`
 (`orchestration_plugin/aiprover.toml`) and its reasoning proxy
 (`orchestration_plugin/setup.sh endpoint` restarts the proxy after a
-reboot), or a harness configuration in `configs/aiprover/`.
+reboot), or a harness configuration in `configs/aiprover/`. The GPUs and
+hourly rate of each server lie in `configs/orchestrator/gpu_hardware.json`;
+GPU time counts only the server's active time during a run's sessions.
 
 The server has two pages. `/user`, where `/` leads, offers one GPU group,
 the open and OpenAI math problems, the proved OpenAI problems, and the runs

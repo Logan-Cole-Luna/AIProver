@@ -34,20 +34,21 @@ flowchart LR
 
 ## Setup
 
-Linux, WSL2, or macOS, with about 15 GB of free disk. Each command builds the environment and
-the Lean project, connects the model server, and installs the Claude Code plugins.
+Linux, WSL2, or macOS, with about 15 GB of free disk. `./setup` installs Nix if it is missing
+(after confirmation; sudo once, to create `/nix`), builds the environment from the flakes,
+builds the Lean project, connects the model server, and installs the Claude Code plugins:
 
 ```bash
 git clone https://github.com/Logan-Cole-Luna/AIProver && cd AIProver
-nix run .#setup-harness       -- --endpoint http://<host>:<port>   # the harness alone
-nix run .#setup-orchestration -- --endpoint http://<host>:<port>   # the orchestration
-nix run .#setup               -- --endpoint http://<host>:<port>   # both
+./setup --endpoint http://<host>:<port>                 # both components
+./setup harness --endpoint http://<host>:<port>         # the harness alone
+./setup orchestration --endpoint http://<host>:<port>   # the orchestration
 ```
 
-On a machine without Nix, `scripts/setup.sh harness|orchestration|all` runs the same steps and
-first installs Nix after confirmation (sudo once, to create `/nix`). The setup initializes the
-submodules that it needs, so a plain clone suffices. `--dry-run` prints every step without
-changing anything, and `--help` lists the options.
+With Nix installed, `nix run .#setup`, `nix run .#setup-harness`, and
+`nix run .#setup-orchestration` (options after `--`) run the same commands. The setup
+initializes the submodules that it needs, so a plain clone suffices. `--dry-run` prints every
+step without changing anything, and `--help` lists the options.
 
 | Model server | Options | Connection |
 | --- | --- | --- |
@@ -67,11 +68,10 @@ describe each component, its setup, and its use in full.
 
 ```
 ├── README.md, HARNESS.md, ORCHESTRATION.md
+├── setup                    # the setup command (POSIX sh; installs Nix when missing)
 ├── flake.nix, flake.lock    # setup apps, harness tools, development shell
 ├── nix/harness-tools.nix    # programs of the harness and its setup
-├── scripts/
-│   ├── setup.sh             # the setup commands
-│   └── check-pins.sh        # submodule commits and their consistency
+├── scripts/check-pins.sh    # submodule commits and their consistency
 ├── skill/                   # Claude Code marketplace "aiprover" of both plugins
 ├── harness/                 # submodule: AIProver harness, CLI, and skill
 ├── orchestration/           # submodule: aiprover-orchestration

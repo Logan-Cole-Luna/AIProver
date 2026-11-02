@@ -2,7 +2,7 @@
   description = "AIProver: the harness and the orchestration, pinned as submodules, and their setup";
 
   # The harness virtualenvs and the orchestration tools are packages of orchestration/flake.nix,
-  # built from the checkout by scripts/setup.sh; this flake holds the setup commands, the
+  # built from the checkout by ./setup; this flake holds the setup commands, the
   # harness tools, and the shell. nixpkgs is locked at the revision of orchestration/flake.lock.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
@@ -18,7 +18,7 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
-      # One app per setup command; each runs scripts/setup.sh of the checkout it is started in,
+      # One app per setup command; each runs ./setup of the checkout it is started in,
       # since the setup writes its configuration and environment links into that checkout.
       setupApp =
         pkgs: component:
@@ -32,7 +32,7 @@
                 echo "run inside a checkout of the AIProver repository" >&2
                 exit 1
               fi
-              exec sh "$root/scripts/setup.sh" ${component} "$@"
+              exec sh "$root/setup" ${component} "$@"
             '';
           };
         in

@@ -61,15 +61,15 @@ From the repository root (the full steps are in the harness's
 1. Start the model server (skip if one is already running): `harness/AIProver_plugin/serve/serve_aiprover.sh
    /path/to/aiprover_model`. It runs vLLM with the exact flags the harness needs; on Slurm
    clusters with one GPU per node use `serve/serve_vista_pp2.slurm` (see the header of each).
-2. `nix run .#setup-harness -- --endpoint http://<host>:<port>` (`--via HOST` for a server
+2. `./setup harness --endpoint http://<host>:<port>` (`--via HOST` for a server
    reachable only over SSH, `--endpoint none` for no server, `--dry-run` to print the steps). It
    builds the tools and the two Python venvs into `.aiprover/nix/` (the venvs are the packages
    `venv-vibe` and `venv-mcp` of `orchestration/flake.nix`, so both components use identical
    environments), writes `.aiprover/aiprover.toml` and links `~/.config/aiprover/aiprover.toml`
    to it, installs elan, Lean 4.23.0, Mathlib, and cslib at `.aiprover/lean_project`
    (`harness/AIProver_plugin/setup.sh lean`), runs `aiprover doctor`, and installs the Claude Code
-   plugin from the marketplace `skill/`. On a machine without Nix, `scripts/setup.sh harness`
-   installs it first.
+   plugin from the marketplace `skill/`. It installs Nix first when it is missing; with Nix,
+   `nix run .#setup-harness` is the same command.
 3. `.aiprover/aiprover.toml` takes the place of `AIProver_plugin/aiprover.toml`: `[endpoint]` says
    where the model server is (an SSH host and the vLLM port, or a direct `api_base`), `[paths]`
    where Lean, the venvs and ripgrep live. A later setup without `--endpoint` keeps it. The CLI
