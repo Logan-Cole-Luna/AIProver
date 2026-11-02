@@ -13,7 +13,7 @@
     {
       "name": "aiprover-orchestration",
       "source": "./plugins/aiprover-orchestration",
-      "description": "Formalization and proof of a theorem by an orchestration of Claude roles and AIProver jobs (skill aiprover-captain)."
+      "description": "Formalization and proof of a theorem by an orchestration of agent roles and AIProver jobs (skill aiprover-orchestrator)."
     }
   ]
 }

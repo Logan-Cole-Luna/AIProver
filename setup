@@ -1,12 +1,12 @@
 #!/bin/sh
-# scripts/setup.sh harness|orchestration|all [OPTIONS]: the AIProver harness, the orchestration,
-# or both, from a checkout of this repository, on Linux, WSL2 or macOS. The flake apps run it:
+# ./setup: from a fresh clone to a working AIProver, on Linux, WSL2 or macOS.
 #
-#   nix run .#setup-harness       -- [OPTIONS]      scripts/setup.sh harness
-#   nix run .#setup-orchestration -- [OPTIONS]      scripts/setup.sh orchestration
-#   nix run .#setup               -- [OPTIONS]      scripts/setup.sh all
+#   ./setup [all] [OPTIONS]             the harness, then the orchestration on the same Lean project
+#   ./setup harness [OPTIONS]           the harness alone
+#   ./setup orchestration [OPTIONS]     the orchestration, with this repository's harness/
 #
-# Without Nix, run scripts/setup.sh directly: it offers to install Nix first.
+# The flake apps run the same commands once Nix is installed:
+#   nix run .#setup -- [OPTIONS], nix run .#setup-harness -- ..., nix run .#setup-orchestration -- ...
 #
 #   --endpoint URL|none  the model server; none: no server (Claude subagents prove the lemmas)
 #   --via HOST           an SSH host that reaches the server (the connection is an SSH tunnel)
@@ -16,12 +16,14 @@
 #   --timeout SEC        wall clock of one AIProver session (default 5400)
 #   --max-turns N        turn budget of one AIProver session (default 200)
 #   --no-lean            skip the Lean build and the plugin installation
-#   --yes                accept every default
 #   --dry-run            print what would happen; change nothing
+#   --yes                accept every default (the Nix installer still shows what it runs)
 #   --installer official|determinate    the Nix installer, when Nix is missing
-# The orchestration accepts further options (orchestration/setup --help); every option is passed
-# to it unchanged.
+# The orchestration accepts further options (orchestration/setup --help), such as --search for
+# the arXiv paper search; every option is passed to it unchanged.
 #
+# Steps: check the platform; find Nix, or offer to install it; fetch the submodules; then, per
+# component:
 # harness:        builds the harness environment into .aiprover/nix/, writes the harness
 #                 configuration .aiprover/aiprover.toml (linked from ~/.config/aiprover/), runs
 #                 harness/AIProver_plugin/setup.sh lean and aiprover doctor.
@@ -34,6 +36,7 @@
 set -eu
 
 NIX_FEATURES="nix-command flakes"
+MIN_FREE_GB=15
 # Local end of the harness's SSH tunnel; the orchestration's tunnel uses 18555.
 TUNNEL_PORT=18565
 # The orchestration's reasoning proxy, the harness's server when no endpoint is given.
@@ -47,7 +50,20 @@ die() {
   printf 'setup: %s\n' "$*" >&2
   exit 1
 }
-usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { awk 'NR > 1 && !/^#/ { exit } NR > 1 { sub(/^# ?/, ""); print }' "$0"; }
+
+# ask QUESTION DEFAULT(y|n): yes or no from the terminal; --yes answers y.
+ask() {
+  [ "$YES" = yes ] && return 0
+  if [ "$2" = y ]; then hint="[Y/n]"; else hint="[y/N]"; fi
+  printf '%s %s ' "$1" "$hint"
+  read -r answer || answer=""
+  case "$answer" in
+  [Yy]*) return 0 ;;
+  [Nn]*) return 1 ;;
+  *) [ "$2" = y ] ;;
+  esac
+}
 
 run() {
   if [ "$DRY" = yes ]; then say "would run: $*"; else "$@"; fi
@@ -81,7 +97,27 @@ parse_options() {
   done
 }
 
-# Submodules and Nix ------------------------------------------------------------------------------
+# Platform, submodules and Nix ---------------------------------------------------------------------
+
+check_platform() {
+  os=$(uname -s)
+  arch=$(uname -m)
+  case "$os" in
+  Linux)
+    if grep -qi microsoft /proc/version 2>/dev/null; then platform="WSL2"; else platform="Linux"; fi
+    ;;
+  Darwin) platform="macOS" ;;
+  *) die "unsupported system $os: use Linux, macOS, or Windows through WSL2" ;;
+  esac
+  case "$arch" in
+  x86_64 | amd64 | aarch64 | arm64) ;;
+  *) die "unsupported architecture $arch" ;;
+  esac
+  step "Platform: $platform ($arch)"
+  free_kb=$(df -Pk . | awk 'NR == 2 { print $4 }')
+  [ "$((free_kb / 1048576))" -ge "$MIN_FREE_GB" ] \
+    || warn "less than $MIN_FREE_GB GB free here: Mathlib and the Nix store need about that"
+}
 
 # fetch_submodule PATH: initialized at its pinned commit, unless already checked out (development
 # happens inside the submodules). Not recursive: the orchestration uses harness/, not its own
@@ -115,9 +151,7 @@ check_nix() {
   say "The $INSTALLER installer would run (it needs sudo once, to create /nix):"
   say "  $command"
   if [ "$DRY" = yes ]; then return; fi
-  printf 'Install Nix now? [y/N] '
-  read -r answer || answer=""
-  case "$answer" in [Yy]*) ;; *) die "install Nix, then run the setup again" ;; esac
+  ask "Install Nix now?" n || die "install Nix, then run ./setup again"
   sh -c "$command"
   load_nix || die "Nix installed but not found: open a new terminal and run the setup again"
 }
@@ -164,7 +198,7 @@ write_harness_config() {
   step "Harness configuration: $config ($mode${api_base:+, $api_base}${VIA:+, via $VIA})"
   content=$(
     cat <<EOF
-# AIProver harness configuration, written by scripts/setup.sh for this device. Same format as
+# AIProver harness configuration, written by ./setup for this device. Same format as
 # harness/AIProver_plugin/aiprover.toml. Edit it freely; the setup keeps it unless --endpoint
 # is given. After an edit: harness/AIProver_plugin/bin/aiprover doctor
 
@@ -274,16 +308,15 @@ install_plugins() {
 }
 
 main() {
-  component="${1:-}"
-  [ $# -gt 0 ] && shift
-  case "$component" in
-  harness | orchestration | all) ;;
-  -h | --help) usage; exit 0 ;;
-  *) usage; exit 2 ;;
+  case "${1:-}" in
+  harness | orchestration | all) component=$1; shift ;;
+  "" | --*) component=all ;;
+  *) die "unknown component $1 (harness|orchestration|all; see ./setup --help)" ;;
   esac
   parse_options "$@"
-  cd "$(dirname "$0")/.."
-  [ -f flake.nix ] && [ -f .gitmodules ] || die "scripts/setup.sh belongs to the AIProver repository"
+  cd "$(dirname "$0")"
+  [ -f flake.nix ] && [ -f .gitmodules ] || die "run ./setup from the AIProver repository"
+  check_platform
   check_nix
   case "$component" in
   harness)
@@ -300,7 +333,7 @@ main() {
     install_plugins aiprover aiprover-orchestration
     ;;
   esac
-  step "Done: ask Claude Code for the aiprover-autoformalize or aiprover-captain skill; see README.md"
+  step "Done: ask Claude Code for the aiprover-autoformalize or aiprover-orchestrator skill; see README.md"
 }
 
 main "$@"
